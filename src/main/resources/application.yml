@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: vidacruz-triage
+  r2dbc:
+    url: ${R2DBC_URL:r2dbc:postgresql://localhost:5432/vidacruz}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  sql:
+    init:
+      mode: always
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topic: ${KAFKA_TRIAGE_TOPIC:triaje.eventos}
+  outbox:
+    poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}

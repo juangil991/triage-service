@@ -1,0 +1,164 @@
+package com.vidacruz.triage.domain.service;
+
+import com.vidacruz.triage.domain.exception.InvalidPatientException;
+import com.vidacruz.triage.domain.model.PatientRegistration;
+import com.vidacruz.triage.domain.model.TriageLevel;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class PatientClassifierTest {
+
+    private PatientClassifier classifier;
+
+    @BeforeEach
+    void setUp() {
+        classifier = new PatientClassifier(new AdministrativeComplaintMatcher());
+    }
+
+    @Test
+    void criticalCriteriaTakePriorityOverLowerLevels() {
+        PatientRegistration patient = patient(130, 120, 80, "98", "37.0", 8, 15, "solicitud administrativa");
+
+        assertEquals(TriageLevel.CRITICO, classifier.classify(patient));
+    }
+
+    @Test
+    void urgentCriteriaTakePriorityOverUrgentTwo() {
+        PatientRegistration patient = patient(100, 100, 70, "95", "38.5", 8, 13, "dolor leve");
+
+        assertEquals(TriageLevel.URGENTE, classifier.classify(patient));
+    }
+
+    @Test
+    void classifiesAtUrgentTwoPainBoundary() {
+        PatientRegistration patient = patient(80, 120, 80, "98", "37.0", 7, 15, "dolor");
+
+        assertEquals(TriageLevel.URGENTE_2, classifier.classify(patient));
+    }
+
+    @Test
+    void usesAdministrativeKeywordsOnlyAfterUrgentLevelsAreExcluded() {
+        PatientRegistration administrative = patient(80, 120, 80, "98", "37.0", 2, 15,
+                "Tengo un problema con la confirmación de mi cita");
+        PatientRegistration ordinary = patient(80, 120, 80, "98", "37.0", 2, 15,
+                "consulta general");
+        PatientRegistration urgentAdministrative = patient(80, 120, 80, "98", "38.5", 2, 15,
+                "problema con una cita");
+
+        assertEquals(TriageLevel.NO_URGENTE_2, classifier.classify(administrative));
+        assertEquals(TriageLevel.NO_URGENTE, classifier.classify(ordinary));
+        assertEquals(TriageLevel.URGENTE, classifier.classify(urgentAdministrative));
+    }
+
+    @Test
+    void rejectsDiastolicPressureNotLowerThanSystolic() {
+        PatientRegistration patient = patient(80, 120, 120, "98", "37.0", 2, 15, "consulta");
+
+        InvalidPatientException exception = assertThrows(
+                InvalidPatientException.class, () -> classifier.classify(patient));
+
+        assertEquals("presionDiastolicaMmhg", exception.field());
+    }
+
+    @Test
+    void rejectsOutOfRangeValuesWithTheInvalidField() {
+        List<InvalidCase> cases = List.of(
+                new InvalidCase(patient("AB", 40, 80, 120, 80, "98", "37", 2, 15, "consulta"), "nombreCompleto"),
+                new InvalidCase(patient("Paciente Prueba", -1, 80, 120, 80, "98", "37", 2, 15, "consulta"), "edad"),
+                new InvalidCase(patient("Paciente Prueba", 121, 80, 120, 80, "98", "37", 2, 15, "consulta"), "edad"),
+                new InvalidCase(patient("Paciente Prueba", 40, 19, 120, 80, "98", "37", 2, 15, "consulta"),
+                        "frecuenciaCardiacaBpm"),
+                new InvalidCase(patient("Paciente Prueba", 40, 251, 120, 80, "98", "37", 2, 15, "consulta"),
+                        "frecuenciaCardiacaBpm"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 59, 30, "98", "37", 2, 15, "consulta"),
+                        "presionSistolicaMmhg"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 261, 30, "98", "37", 2, 15, "consulta"),
+                        "presionSistolicaMmhg"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 29, "98", "37", 2, 15, "consulta"),
+                        "presionDiastolicaMmhg"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 161, "98", "37", 2, 15, "consulta"),
+                        "presionDiastolicaMmhg"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "69.9", "37", 2, 15, "consulta"),
+                        "spo2"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "100.1", "37", 2, 15, "consulta"),
+                        "spo2"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "33.9", 2, 15, "consulta"),
+                        "temperaturaC"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "42.1", 2, 15, "consulta"),
+                        "temperaturaC"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "37", -1, 15, "consulta"),
+                        "dolor"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "37", 11, 15, "consulta"),
+                        "dolor"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "37", 2, 16, "consulta"), "gcs"),
+                new InvalidCase(patient("Paciente Prueba", 40, 80, 120, 80, "98", "37", 2, 2, "consulta"), "gcs"));
+
+        for (InvalidCase invalidCase : cases) {
+            InvalidPatientException exception = assertThrows(
+                    InvalidPatientException.class, () -> classifier.classify(invalidCase.registration()));
+            assertEquals(invalidCase.field(), exception.field());
+        }
+    }
+
+    @Test
+    void acceptsInclusiveVitalSignBoundaries() {
+        PatientRegistration patient = patient(40, 100, 60, "70", "34.0", 0, 3, "consulta");
+
+        assertEquals(TriageLevel.CRITICO, classifier.classify(patient));
+    }
+
+    @Test
+    void acceptsLowerAndUpperBoundariesForAllValidatedFields() {
+        PatientRegistration lower = patient("Ana", 0, 20, 60, 30, "70", "34.0", 0, 3, "x");
+        PatientRegistration upper = patient("A".repeat(100), 120, 250, 260, 160, "100", "42.0", 10, 15, "x");
+
+        assertDoesNotThrow(() -> classifier.classify(lower));
+        assertDoesNotThrow(() -> classifier.classify(upper));
+    }
+
+    private PatientRegistration patient(
+            int heartRate,
+            int systolic,
+            int diastolic,
+            String spo2,
+            String temperature,
+            int pain,
+            int gcs,
+            String complaint) {
+        return patient("Paciente Prueba", 40, heartRate, systolic, diastolic, spo2, temperature, pain, gcs, complaint);
+    }
+
+    private PatientRegistration patient(
+            String name,
+            int age,
+            int heartRate,
+            int systolic,
+            int diastolic,
+            String spo2,
+            String temperature,
+            int pain,
+            int gcs,
+            String complaint) {
+        return new PatientRegistration(
+                name,
+                age,
+                heartRate,
+                systolic,
+                diastolic,
+                new BigDecimal(spo2),
+                new BigDecimal(temperature),
+                pain,
+                gcs,
+                complaint);
+    }
+
+    private record InvalidCase(PatientRegistration registration, String field) {
+    }
+}
