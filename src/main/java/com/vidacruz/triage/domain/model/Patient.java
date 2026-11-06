@@ -43,4 +43,25 @@ public record Patient(
                 fechaRegistro,
                 fechaCambio);
     }
+
+    public Patient withEscalado() {
+        return new Patient(
+                id,
+                nombreCompleto,
+                edad,
+                frecuenciaCardiacaBpm,
+                presionSistolicaMmhg,
+                presionDiastolicaMmhg,
+                spo2,
+                temperaturaC,
+                dolor,
+                gcs,
+                quejaPrincipal,
+                nivelClasificado,
+                slaMinutos,
+                estado,
+                true,
+                fechaRegistro,
+                fechaInicioEstado);
+    }
 }

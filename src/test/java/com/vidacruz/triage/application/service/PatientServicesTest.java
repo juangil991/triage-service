@@ -61,7 +61,8 @@ class PatientUseCasesTest {
                 outbox,
                 new PatientClassifier(new PatientRegistrationValidator(), new AdministrativeComplaintMatcher()),
                 transactions,
-                clock);
+                clock,
+                TriageLevel::slaMinutes);
         getPatient = new GetPatientService(patients);
         changePatientStatus = new ChangePatientStatusService(
                 patients, audits, outbox, new PatientStateMachine(), transactions, clock);
@@ -152,6 +153,21 @@ class PatientUseCasesTest {
                 patient(patientId, PatientStatus.ALTA, Instant.parse("2026-01-02T03:00:00Z"))));
 
         StepVerifier.create(changePatientStatus.changeStatus(patientId, PatientStatus.EN_CONSULTA, "correlation-3"))
+                .expectError(InvalidPatientTransitionException.class)
+                .verify();
+
+        verify(patients, never()).updateStatus(any(), any());
+        verify(audits, never()).save(any(ClinicalAudit.class));
+        verify(outbox, never()).save(any(PatientEvent.class));
+    }
+
+    @Test
+    void directDischargeTransitionWritesNoAuditOrEvent() {
+        UUID patientId = UUID.randomUUID();
+        when(patients.findById(patientId)).thenReturn(Mono.just(
+                patient(patientId, PatientStatus.REGISTRADO, Instant.parse("2026-01-02T03:00:00Z"))));
+
+        StepVerifier.create(changePatientStatus.changeStatus(patientId, PatientStatus.ALTA, "correlation-4"))
                 .expectError(InvalidPatientTransitionException.class)
                 .verify();
 

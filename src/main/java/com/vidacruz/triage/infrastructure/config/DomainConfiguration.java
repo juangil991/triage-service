@@ -1,6 +1,7 @@
 package com.vidacruz.triage.infrastructure.config;
 
 import com.vidacruz.triage.application.port.in.ChangePatientStatusUseCase;
+import com.vidacruz.triage.application.port.in.EscalateOverduePatientsUseCase;
 import com.vidacruz.triage.application.port.in.GetPatientUseCase;
 import com.vidacruz.triage.application.port.in.RegisterPatientUseCase;
 import com.vidacruz.triage.application.port.out.ClinicalAuditRepositoryPort;
@@ -8,18 +9,22 @@ import com.vidacruz.triage.application.port.out.OutboxRepositoryPort;
 import com.vidacruz.triage.application.port.out.PatientRepositoryPort;
 import com.vidacruz.triage.application.port.out.TransactionPort;
 import com.vidacruz.triage.application.service.ChangePatientStatusService;
+import com.vidacruz.triage.application.service.EscalateOverduePatientsService;
 import com.vidacruz.triage.application.service.GetPatientService;
 import com.vidacruz.triage.application.service.RegisterPatientService;
 import com.vidacruz.triage.domain.service.AdministrativeComplaintMatcher;
 import com.vidacruz.triage.domain.service.PatientClassifier;
 import com.vidacruz.triage.domain.service.PatientRegistrationValidator;
 import com.vidacruz.triage.domain.service.PatientStateMachine;
+import com.vidacruz.triage.domain.service.TriageSlaPolicy;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Clock;
 
 @Configuration
+@EnableConfigurationProperties(TriageSlaProperties.class)
 public class DomainConfiguration {
 
     @Bean
@@ -40,6 +45,11 @@ public class DomainConfiguration {
     }
 
     @Bean
+    TriageSlaPolicy triageSlaPolicy(TriageSlaProperties properties) {
+        return properties::minutesFor;
+    }
+
+    @Bean
     PatientStateMachine patientStateMachine() {
         return new PatientStateMachine();
     }
@@ -51,8 +61,9 @@ public class DomainConfiguration {
             OutboxRepositoryPort outbox,
             PatientClassifier classifier,
             TransactionPort transactions,
-            Clock clock) {
-        return new RegisterPatientService(patients, audits, outbox, classifier, transactions, clock);
+            Clock clock,
+            TriageSlaPolicy slaPolicy) {
+        return new RegisterPatientService(patients, audits, outbox, classifier, transactions, clock, slaPolicy);
     }
 
     @Bean
@@ -69,6 +80,16 @@ public class DomainConfiguration {
             TransactionPort transactions,
             Clock clock) {
         return new ChangePatientStatusService(patients, audits, outbox, stateMachine, transactions, clock);
+    }
+
+    @Bean
+    EscalateOverduePatientsUseCase escalateOverduePatientsUseCase(
+            PatientRepositoryPort patients,
+            ClinicalAuditRepositoryPort audits,
+            OutboxRepositoryPort outbox,
+            TransactionPort transactions,
+            Clock clock) {
+        return new EscalateOverduePatientsService(patients, audits, outbox, transactions, clock);
     }
 
     @Bean

@@ -81,6 +81,7 @@ class PatientFlowIntegrationTest {
         registry.add("app.kafka.bootstrap-servers", KAFKA::getBootstrapServers);
         registry.add("app.kafka.topic", () -> TOPIC);
         registry.add("app.outbox.poll-interval-ms", () -> "100");
+        registry.add("app.triage.escalation.poll-interval-ms", () -> "100");
     }
 
     @BeforeAll
@@ -168,6 +169,95 @@ class PatientFlowIntegrationTest {
     }
 
     @Test
+    void overdueRegisteredPatientIsEscalatedOnceAndPublishesEvent() throws Exception {
+        UUID patientId = registerPatient(UUID.randomUUID());
+        database.sql("""
+                UPDATE triage_patient
+                SET fecha_registro = CURRENT_TIMESTAMP - INTERVAL '2 hours'
+                WHERE id = :patient_id
+                """)
+                .bind("patient_id", patientId)
+                .then()
+                .block(Duration.ofSeconds(5));
+
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total
+                FROM triage_patient
+                WHERE id = :patient_id
+                  AND estado = 'REGISTRADO'
+                  AND escalado = FALSE
+                  AND fecha_registro + (sla_minutos * INTERVAL '1 minute') <= CURRENT_TIMESTAMP
+                """, patientId)).isEqualTo(1);
+        awaitEscalated(patientId);
+
+        webClient.get()
+                .uri("/triage/pacientes/{id}", patientId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.estado").isEqualTo("REGISTRADO")
+                .jsonPath("$.escalado").isEqualTo(true);
+
+        Map<String, ObservedEvent> events = awaitEvents(patientId, 2);
+        ObservedEvent escalated = events.get("paciente_escalado");
+        assertThat(escalated).isNotNull();
+        assertThat(escalated.value().path("correlationId").asText()).isNotBlank();
+        assertThat(escalated.value().path("payload").path("escalado").asBoolean()).isTrue();
+        assertThat(countForPatient(
+                "SELECT COUNT(*) AS total FROM clinical_audit WHERE patient_id = :patient_id",
+                patientId)).isEqualTo(2);
+        awaitPublishedEvents(patientId, 2);
+
+        Thread.sleep(300);
+        assertThat(countForPatient(
+                "SELECT COUNT(*) AS total FROM clinical_audit WHERE patient_id = :patient_id",
+                patientId)).isEqualTo(2);
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total FROM outbox_event
+                WHERE (payload ->> 'patientId')::uuid = :patient_id
+                """, patientId)).isEqualTo(2);
+    }
+
+    @Test
+    void patientsAlreadyInConsultationOrDischargedAreNeverEscalated() throws InterruptedException {
+        UUID inConsultation = registerPatient(UUID.randomUUID());
+        changeStatus(inConsultation, "EN_CONSULTA", UUID.randomUUID());
+        makeRegistrationOverdue(inConsultation);
+
+        UUID discharged = registerPatient(UUID.randomUUID());
+        changeStatus(discharged, "EN_CONSULTA", UUID.randomUUID());
+        changeStatus(discharged, "ALTA", UUID.randomUUID());
+        makeRegistrationOverdue(discharged);
+
+        Thread.sleep(300);
+
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total
+                FROM triage_patient
+                WHERE id = :patient_id
+                  AND estado IN ('EN_CONSULTA', 'ALTA')
+                  AND escalado = FALSE
+                """, inConsultation)).isEqualTo(1);
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total
+                FROM triage_patient
+                WHERE id = :patient_id
+                  AND estado = 'ALTA'
+                  AND escalado = FALSE
+                """, discharged)).isEqualTo(1);
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total
+                FROM clinical_audit
+                WHERE patient_id = :patient_id AND event_type = 'paciente_escalado'
+                """, inConsultation)).isZero();
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total
+                FROM clinical_audit
+                WHERE patient_id = :patient_id AND event_type = 'paciente_escalado'
+                """, discharged)).isZero();
+    }
+
+    @Test
     void registrationValidationReturnsFieldSpecificErrorsWithoutWrites() {
         long patientsBefore = countRows("triage_patient");
         long auditsBefore = countRows("clinical_audit");
@@ -226,6 +316,35 @@ class PatientFlowIntegrationTest {
                 .bodyValue(Map.of("estado", "INVALIDO"))
                 .exchange()
                 .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void directDischargeReturnsConflictWithoutAuditOrEventWrites() {
+        UUID patientId = registerPatient(UUID.randomUUID());
+        long auditsBefore = countForPatient(
+                "SELECT COUNT(*) AS total FROM clinical_audit WHERE patient_id = :patient_id",
+                patientId);
+        long outboxBefore = countForPatient("""
+                SELECT COUNT(*) AS total FROM outbox_event
+                WHERE (payload ->> 'patientId')::uuid = :patient_id
+                """, patientId);
+
+        webClient.patch()
+                .uri("/triage/pacientes/{id}/estado", patientId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("estado", "ALTA"))
+                .exchange()
+                .expectStatus().isEqualTo(HttpStatus.CONFLICT)
+                .expectBody()
+                .jsonPath("$.mensaje").isEqualTo("Transición inválida de REGISTRADO a ALTA");
+
+        assertThat(countForPatient(
+                "SELECT COUNT(*) AS total FROM clinical_audit WHERE patient_id = :patient_id",
+                patientId)).isEqualTo(auditsBefore);
+        assertThat(countForPatient("""
+                SELECT COUNT(*) AS total FROM outbox_event
+                WHERE (payload ->> 'patientId')::uuid = :patient_id
+                """, patientId)).isEqualTo(outboxBefore);
     }
 
     @Test
@@ -537,6 +656,34 @@ class PatientFlowIntegrationTest {
         } while (System.nanoTime() < deadline);
 
         assertThat(publishedCount).isEqualTo(1);
+    }
+
+    private void awaitEscalated(UUID patientId) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        long escalated = 0;
+        do {
+            escalated = countForPatient("""
+                    SELECT COUNT(*) AS total
+                    FROM triage_patient
+                    WHERE id = :patient_id AND escalado = TRUE
+                    """, patientId);
+            if (escalated == 1) {
+                break;
+            }
+            Thread.sleep(100);
+        } while (System.nanoTime() < deadline);
+        assertThat(escalated).isEqualTo(1);
+    }
+
+    private void makeRegistrationOverdue(UUID patientId) {
+        database.sql("""
+                UPDATE triage_patient
+                SET fecha_registro = CURRENT_TIMESTAMP - INTERVAL '2 hours'
+                WHERE id = :patient_id
+                """)
+                .bind("patient_id", patientId)
+                .then()
+                .block(Duration.ofSeconds(5));
     }
 
     private long countPublishedForMarker(String marker) {

@@ -25,3 +25,12 @@ app:
     topic: ${KAFKA_TRIAGE_TOPIC:triaje.eventos}
   outbox:
     poll-interval-ms: ${OUTBOX_POLL_INTERVAL_MS:1000}
+  triage:
+    escalation:
+      poll-interval-ms: ${TRIAGE_ESCALATION_POLL_INTERVAL_MS:1000}
+    sla:
+      critico: ${TRIAGE_SLA_CRITICO_MINUTOS:5}
+      urgente: ${TRIAGE_SLA_URGENTE_MINUTOS:10}
+      urgente2: ${TRIAGE_SLA_URGENTE_2_MINUTOS:30}
+      no-urgente: ${TRIAGE_SLA_NO_URGENTE_MINUTOS:60}
+      no-urgente2: ${TRIAGE_SLA_NO_URGENTE_2_MINUTOS:120}

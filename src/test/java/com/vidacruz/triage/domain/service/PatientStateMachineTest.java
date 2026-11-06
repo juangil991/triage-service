@@ -16,7 +16,6 @@ class PatientStateMachineTest {
     @Test
     void acceptsAllSpecifiedTransitions() {
         assertDoesNotThrow(() -> stateMachine.validate(PatientStatus.REGISTRADO, PatientStatus.EN_CONSULTA));
-        assertDoesNotThrow(() -> stateMachine.validate(PatientStatus.REGISTRADO, PatientStatus.ALTA));
         assertDoesNotThrow(() -> stateMachine.validate(PatientStatus.EN_CONSULTA, PatientStatus.ALTA));
     }
 
@@ -24,7 +23,6 @@ class PatientStateMachineTest {
     void rejectsEveryTransitionNotExplicitlyAllowed() {
         Set<String> allowed = Set.of(
                 "REGISTRADO:EN_CONSULTA",
-                "REGISTRADO:ALTA",
                 "EN_CONSULTA:ALTA");
 
         for (PatientStatus current : PatientStatus.values()) {

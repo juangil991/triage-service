@@ -12,6 +12,11 @@ public record PatientEvent(
         UUID patientId,
         Payload payload) {
 
-    public record Payload(TriageLevel triageLevel, PatientStatus status, Instant registeredAt, int slaMinutes) {
+    public record Payload(
+            TriageLevel triageLevel,
+            PatientStatus status,
+            Instant registeredAt,
+            int slaMinutes,
+            boolean escalado) {
     }
 }

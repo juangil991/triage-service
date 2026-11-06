@@ -47,3 +47,7 @@ docker compose up --build -d
 ```
 
 El API queda disponible en `http://localhost:8080`; la readiness se consulta en `/actuator/health/readiness`.
+
+## Monitoreo de SLA (RF-03)
+
+El monitor periódico escala los pacientes que siguen en `REGISTRADO` al vencer el SLA guardado en cada registro. Los SLA iniciales por nivel y el intervalo del monitor se pueden ajustar con `TRIAGE_SLA_*_MINUTOS` y `TRIAGE_ESCALATION_POLL_INTERVAL_MS` en `.env`; los cambios de SLA aplican a registros nuevos. El escalamiento actualiza el flag `escalado`, crea auditoría clínica y encola `paciente_escalado` en el outbox para su publicación a Kafka.

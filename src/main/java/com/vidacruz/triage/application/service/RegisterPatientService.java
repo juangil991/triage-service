@@ -12,13 +12,15 @@ import com.vidacruz.triage.domain.model.PatientRegistration;
 import com.vidacruz.triage.domain.model.PatientStatus;
 import com.vidacruz.triage.domain.model.TriageLevel;
 import com.vidacruz.triage.domain.service.PatientClassifier;
+import com.vidacruz.triage.domain.service.TriageSlaPolicy;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
-public class RegisterPatientService implements RegisterPatientUseCase {
+public class
+RegisterPatientService implements RegisterPatientUseCase {
 
     private final PatientRepositoryPort patients;
     private final ClinicalAuditRepositoryPort audits;
@@ -26,6 +28,7 @@ public class RegisterPatientService implements RegisterPatientUseCase {
     private final PatientClassifier classifier;
     private final TransactionPort transactions;
     private final Clock clock;
+    private final TriageSlaPolicy slaPolicy;
 
     public RegisterPatientService(
             PatientRepositoryPort patients,
@@ -33,13 +36,15 @@ public class RegisterPatientService implements RegisterPatientUseCase {
             OutboxRepositoryPort outbox,
             PatientClassifier classifier,
             TransactionPort transactions,
-            Clock clock) {
+            Clock clock,
+            TriageSlaPolicy slaPolicy) {
         this.patients = patients;
         this.audits = audits;
         this.outbox = outbox;
         this.classifier = classifier;
         this.transactions = transactions;
         this.clock = clock;
+        this.slaPolicy = slaPolicy;
     }
 
     @Override
@@ -60,7 +65,7 @@ public class RegisterPatientService implements RegisterPatientUseCase {
                     registration.gcs(),
                     registration.quejaPrincipal().trim(),
                     level,
-                    level.slaMinutes(),
+                    slaPolicy.minutesFor(level),
                     PatientStatus.REGISTRADO,
                     false,
                     now,

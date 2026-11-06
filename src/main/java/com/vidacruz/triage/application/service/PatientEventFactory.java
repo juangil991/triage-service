@@ -20,6 +20,10 @@ final class PatientEventFactory {
                 correlationId,
                 patient.id(),
                 new PatientEvent.Payload(
-                        patient.nivelClasificado(), patient.estado(), patient.fechaRegistro(), patient.slaMinutos()));
+                        patient.nivelClasificado(),
+                        patient.estado(),
+                        patient.fechaRegistro(),
+                        patient.slaMinutos(),
+                        patient.escalado()));
     }
 }

@@ -66,6 +66,16 @@ public class PatientPersistenceAdapter implements PatientRepositoryPort, Clinica
     }
 
     @Override
+    public Flux<Patient> findOverdueUnescalated(Instant now, int limit) {
+        return patients.findOverdueUnescalated(timestamp(now), limit).map(this::patient);
+    }
+
+    @Override
+    public Mono<Patient> markEscalatedIfOverdue(UUID id, Instant now) {
+        return patients.markEscalatedIfOverdue(id, timestamp(now)).map(this::patient);
+    }
+
+    @Override
     public Mono<Void> save(ClinicalAudit audit) {
         ClinicalAuditEntity entity = new ClinicalAuditEntity(
                 audit.id(),
