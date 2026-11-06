@@ -19,7 +19,15 @@ class PatientClassifierTest {
 
     @BeforeEach
     void setUp() {
-        classifier = new PatientClassifier(new AdministrativeComplaintMatcher());
+        classifier = new PatientClassifier(new PatientRegistrationValidator(), new AdministrativeComplaintMatcher());
+    }
+
+    @Test
+    void requiresCollaborators() {
+        assertThrows(NullPointerException.class,
+                () -> new PatientClassifier(null, new AdministrativeComplaintMatcher()));
+        assertThrows(NullPointerException.class,
+                () -> new PatientClassifier(new PatientRegistrationValidator(), null));
     }
 
     @Test
@@ -39,6 +47,13 @@ class PatientClassifierTest {
     @Test
     void classifiesAtUrgentTwoPainBoundary() {
         PatientRegistration patient = patient(80, 120, 80, "98", "37.0", 7, 15, "dolor");
+
+        assertEquals(TriageLevel.URGENTE_2, classifier.classify(patient));
+    }
+
+    @Test
+    void classifiesLowerUrgentTwoTemperatureBoundaryAsUrgentTwo() {
+        PatientRegistration patient = patient(80, 120, 80, "98", "38.0", 2, 15, "fiebre");
 
         assertEquals(TriageLevel.URGENTE_2, classifier.classify(patient));
     }
@@ -123,6 +138,61 @@ class PatientClassifierTest {
         assertDoesNotThrow(() -> classifier.classify(upper));
     }
 
+    @Test
+    void validatesRequiredTextAndUnicodeNameLength() {
+        assertEquals("body", assertThrows(InvalidPatientException.class,
+                () -> classifier.classify(null)).field());
+        assertEquals("nombreCompleto", assertThrows(InvalidPatientException.class,
+                () -> classifier.classify(patient(" \t ", 40, 80, 120, 80, "98", "37", 2, 15, "consulta"))).field());
+        assertEquals("quejaPrincipal", assertThrows(InvalidPatientException.class,
+                () -> classifier.classify(patient("Ana", 40, 80, 120, 80, "98", "37", 2, 15, " \t "))).field());
+
+        assertDoesNotThrow(() -> classifier.classify(
+                patient("😀😀😀", 40, 80, 120, 80, "98", "37", 2, 15, "consulta")));
+        assertEquals("nombreCompleto", assertThrows(InvalidPatientException.class,
+                () -> classifier.classify(patient("😀".repeat(101), 40, 80, 120, 80, "98", "37", 2, 15,
+                        "consulta"))).field());
+    }
+
+    @Test
+    void classifiesAtAndImmediatelyAroundClinicalThresholds() {
+        List<ClassificationCase> cases = List.of(
+                new ClassificationCase(patient(80, 120, 80, "89.9", "37", 2, 15, "consulta"), TriageLevel.CRITICO),
+                new ClassificationCase(patient(80, 120, 80, "90", "37", 2, 15, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "93", "37", 2, 15, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "93.1", "37", 2, 15, "consulta"),
+                        TriageLevel.NO_URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "98", "38.49", 2, 15, "consulta"),
+                        TriageLevel.URGENTE_2),
+                new ClassificationCase(patient(80, 120, 80, "98", "38.5", 2, 15, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "98", "37", 2, 8, "consulta"), TriageLevel.CRITICO),
+                new ClassificationCase(patient(80, 120, 80, "98", "37", 2, 9, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "98", "37", 2, 14, "consulta"),
+                        TriageLevel.NO_URGENTE),
+                new ClassificationCase(patient(39, 120, 80, "98", "37", 2, 15, "consulta"), TriageLevel.CRITICO),
+                new ClassificationCase(patient(40, 120, 80, "98", "37", 2, 15, "consulta"),
+                        TriageLevel.NO_URGENTE),
+                new ClassificationCase(patient(120, 120, 80, "98", "37", 2, 15, "consulta"),
+                        TriageLevel.URGENTE_2),
+                new ClassificationCase(patient(121, 120, 80, "98", "37", 2, 15, "consulta"), TriageLevel.CRITICO),
+                new ClassificationCase(patient(80, 89, 60, "98", "37", 2, 15, "consulta"), TriageLevel.CRITICO),
+                new ClassificationCase(patient(80, 90, 60, "98", "37", 2, 15, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 100, 60, "98", "37", 2, 15, "consulta"), TriageLevel.URGENTE),
+                new ClassificationCase(patient(80, 101, 60, "98", "37", 2, 15, "consulta"),
+                        TriageLevel.NO_URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "98", "37", 6, 15, "consulta"),
+                        TriageLevel.NO_URGENTE),
+                new ClassificationCase(patient(80, 120, 80, "98", "37", 7, 15, "consulta"),
+                        TriageLevel.URGENTE_2));
+
+        for (ClassificationCase testCase : cases) {
+            assertEquals(
+                    testCase.expected(),
+                    classifier.classify(testCase.registration()),
+                    testCase.registration().toString());
+        }
+    }
+
     private PatientRegistration patient(
             int heartRate,
             int systolic,
@@ -160,5 +230,8 @@ class PatientClassifierTest {
     }
 
     private record InvalidCase(PatientRegistration registration, String field) {
+    }
+
+    private record ClassificationCase(PatientRegistration registration, TriageLevel expected) {
     }
 }

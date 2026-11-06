@@ -4,7 +4,7 @@ import com.vidacruz.triage.domain.model.Patient;
 import com.vidacruz.triage.domain.model.PatientRegistration;
 import reactor.core.publisher.Mono;
 
-public interface RegisterPatientInputPort {
+public interface RegisterPatientUseCase {
 
     Mono<Patient> register(PatientRegistration registration, String correlationId);
 }

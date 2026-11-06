@@ -1,4 +1,4 @@
-package com.vidacruz.triage.application.usecase;
+package com.vidacruz.triage.application.service;
 
 import com.vidacruz.triage.domain.model.Patient;
 import com.vidacruz.triage.domain.model.PatientEvent;

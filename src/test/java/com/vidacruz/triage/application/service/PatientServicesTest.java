@@ -1,9 +1,10 @@
-package com.vidacruz.triage.application.usecase;
+package com.vidacruz.triage.application.service;
 
-import com.vidacruz.triage.application.port.out.ClinicalAuditPort;
-import com.vidacruz.triage.application.port.out.OutboxPort;
-import com.vidacruz.triage.application.port.out.PatientPersistencePort;
+import com.vidacruz.triage.application.port.out.ClinicalAuditRepositoryPort;
+import com.vidacruz.triage.application.port.out.OutboxRepositoryPort;
+import com.vidacruz.triage.application.port.out.PatientRepositoryPort;
 import com.vidacruz.triage.application.port.out.TransactionPort;
+import com.vidacruz.triage.domain.exception.InvalidPatientException;
 import com.vidacruz.triage.domain.exception.InvalidPatientTransitionException;
 import com.vidacruz.triage.domain.exception.PatientNotFoundException;
 import com.vidacruz.triage.domain.model.ClinicalAudit;
@@ -14,6 +15,7 @@ import com.vidacruz.triage.domain.model.PatientStatus;
 import com.vidacruz.triage.domain.model.TriageLevel;
 import com.vidacruz.triage.domain.service.AdministrativeComplaintMatcher;
 import com.vidacruz.triage.domain.service.PatientClassifier;
+import com.vidacruz.triage.domain.service.PatientRegistrationValidator;
 import com.vidacruz.triage.domain.service.PatientStateMachine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +28,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -36,31 +39,31 @@ import static org.mockito.Mockito.when;
 
 class PatientUseCasesTest {
 
-    private final PatientPersistencePort patients = mock(PatientPersistencePort.class);
-    private final ClinicalAuditPort audits = mock(ClinicalAuditPort.class);
-    private final OutboxPort outbox = mock(OutboxPort.class);
+    private final PatientRepositoryPort patients = mock(PatientRepositoryPort.class);
+    private final ClinicalAuditRepositoryPort audits = mock(ClinicalAuditRepositoryPort.class);
+    private final OutboxRepositoryPort outbox = mock(OutboxRepositoryPort.class);
     private final TransactionPort transactions = new TransactionPort() {
         @Override
         public <T> Mono<T> withinTransaction(Mono<T> work) {
             return work;
         }
     };
-    private RegisterPatientUseCase registerPatient;
-    private GetPatientUseCase getPatient;
-    private ChangePatientStatusUseCase changePatientStatus;
+    private RegisterPatientService registerPatient;
+    private GetPatientService getPatient;
+    private ChangePatientStatusService changePatientStatus;
 
     @BeforeEach
     void setUp() {
         Clock clock = Clock.fixed(Instant.parse("2026-01-02T03:04:05Z"), ZoneOffset.UTC);
-        registerPatient = new RegisterPatientUseCase(
+        registerPatient = new RegisterPatientService(
                 patients,
                 audits,
                 outbox,
-                new PatientClassifier(new AdministrativeComplaintMatcher()),
+                new PatientClassifier(new PatientRegistrationValidator(), new AdministrativeComplaintMatcher()),
                 transactions,
                 clock);
-        getPatient = new GetPatientUseCase(patients);
-        changePatientStatus = new ChangePatientStatusUseCase(
+        getPatient = new GetPatientService(patients);
+        changePatientStatus = new ChangePatientStatusService(
                 patients, audits, outbox, new PatientStateMachine(), transactions, clock);
         when(audits.save(any())).thenReturn(Mono.empty());
         when(outbox.save(any())).thenReturn(Mono.empty());
@@ -70,7 +73,7 @@ class PatientUseCasesTest {
     void registrationWritesPatientAuditAndOutboxEvent() {
         when(patients.save(any())).thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
-        StepVerifier.create(registerPatient.execute(
+        StepVerifier.create(registerPatient.register(
                         new PatientRegistration(
                                 "Paciente de Prueba",
                                 40,
@@ -99,11 +102,24 @@ class PatientUseCasesTest {
     }
 
     @Test
+    void registrationValidationIsDeferredUntilSubscription() {
+        Mono<Patient> registration = assertDoesNotThrow(() -> registerPatient.register(null, "correlation-1"));
+
+        StepVerifier.create(registration)
+                .expectError(InvalidPatientException.class)
+                .verify();
+
+        verify(patients, never()).save(any());
+        verify(audits, never()).save(any());
+        verify(outbox, never()).save(any());
+    }
+
+    @Test
     void patientLookupReturnsNotFoundWhenPatientDoesNotExist() {
         UUID patientId = UUID.randomUUID();
         when(patients.findById(patientId)).thenReturn(Mono.empty());
 
-        StepVerifier.create(getPatient.execute(patientId))
+        StepVerifier.create(getPatient.get(patientId))
                 .expectError(PatientNotFoundException.class)
                 .verify();
     }
@@ -116,7 +132,7 @@ class PatientUseCasesTest {
         when(patients.updateStatus(any(), any()))
                 .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
 
-        StepVerifier.create(changePatientStatus.execute(patientId, PatientStatus.EN_CONSULTA, "correlation-2"))
+        StepVerifier.create(changePatientStatus.changeStatus(patientId, PatientStatus.EN_CONSULTA, "correlation-2"))
                 .assertNext(updated -> {
                     assertEquals(PatientStatus.EN_CONSULTA, updated.estado());
                     assertEquals(Instant.parse("2026-01-02T03:04:05Z"), updated.fechaInicioEstado());
@@ -135,7 +151,7 @@ class PatientUseCasesTest {
         when(patients.findById(patientId)).thenReturn(Mono.just(
                 patient(patientId, PatientStatus.ALTA, Instant.parse("2026-01-02T03:00:00Z"))));
 
-        StepVerifier.create(changePatientStatus.execute(patientId, PatientStatus.EN_CONSULTA, "correlation-3"))
+        StepVerifier.create(changePatientStatus.changeStatus(patientId, PatientStatus.EN_CONSULTA, "correlation-3"))
                 .expectError(InvalidPatientTransitionException.class)
                 .verify();
 

@@ -5,7 +5,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.UUID;
 
-public interface GetPatientInputPort {
+public interface GetPatientUseCase {
 
     Mono<Patient> get(UUID patientId);
 }

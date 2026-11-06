@@ -1,8 +1,8 @@
 package com.vidacruz.triage.infrastructure.adapter.in.rest;
 
-import com.vidacruz.triage.application.port.in.ChangePatientStatusInputPort;
-import com.vidacruz.triage.application.port.in.GetPatientInputPort;
-import com.vidacruz.triage.application.port.in.RegisterPatientInputPort;
+import com.vidacruz.triage.application.port.in.ChangePatientStatusUseCase;
+import com.vidacruz.triage.application.port.in.GetPatientUseCase;
+import com.vidacruz.triage.application.port.in.RegisterPatientUseCase;
 import com.vidacruz.triage.domain.model.PatientStatus;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,15 +23,15 @@ import java.util.UUID;
 @RequestMapping("/triage/pacientes")
 public class PatientController {
 
-    private final RegisterPatientInputPort registerPatient;
-    private final GetPatientInputPort getPatient;
-    private final ChangePatientStatusInputPort changePatientStatus;
+    private final RegisterPatientUseCase registerPatient;
+    private final GetPatientUseCase getPatient;
+    private final ChangePatientStatusUseCase changePatientStatus;
     private final Clock clock;
 
     public PatientController(
-            RegisterPatientInputPort registerPatient,
-            GetPatientInputPort getPatient,
-            ChangePatientStatusInputPort changePatientStatus,
+            RegisterPatientUseCase registerPatient,
+            GetPatientUseCase getPatient,
+            ChangePatientStatusUseCase changePatientStatus,
             Clock clock) {
         this.registerPatient = registerPatient;
         this.getPatient = getPatient;

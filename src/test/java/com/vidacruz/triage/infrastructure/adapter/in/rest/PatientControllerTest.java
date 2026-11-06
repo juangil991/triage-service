@@ -1,8 +1,8 @@
 package com.vidacruz.triage.infrastructure.adapter.in.rest;
 
-import com.vidacruz.triage.application.port.in.ChangePatientStatusInputPort;
-import com.vidacruz.triage.application.port.in.GetPatientInputPort;
-import com.vidacruz.triage.application.port.in.RegisterPatientInputPort;
+import com.vidacruz.triage.application.port.in.ChangePatientStatusUseCase;
+import com.vidacruz.triage.application.port.in.GetPatientUseCase;
+import com.vidacruz.triage.application.port.in.RegisterPatientUseCase;
 import com.vidacruz.triage.domain.exception.InvalidPatientException;
 import com.vidacruz.triage.domain.exception.InvalidPatientTransitionException;
 import com.vidacruz.triage.domain.model.PatientStatus;
@@ -23,9 +23,9 @@ import static org.mockito.Mockito.when;
 
 class PatientControllerTest {
 
-    private final RegisterPatientInputPort registerPatient = mock(RegisterPatientInputPort.class);
-    private final GetPatientInputPort getPatient = mock(GetPatientInputPort.class);
-    private final ChangePatientStatusInputPort changePatientStatus = mock(ChangePatientStatusInputPort.class);
+    private final RegisterPatientUseCase registerPatient = mock(RegisterPatientUseCase.class);
+    private final GetPatientUseCase getPatient = mock(GetPatientUseCase.class);
+    private final ChangePatientStatusUseCase changePatientStatus = mock(ChangePatientStatusUseCase.class);
     private WebTestClient client;
 
     @BeforeEach

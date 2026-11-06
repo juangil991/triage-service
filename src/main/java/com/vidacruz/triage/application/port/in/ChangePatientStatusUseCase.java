@@ -6,7 +6,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.UUID;
 
-public interface ChangePatientStatusInputPort {
+public interface ChangePatientStatusUseCase {
 
     Mono<Patient> changeStatus(UUID patientId, PatientStatus requestedStatus, String correlationId);
 }

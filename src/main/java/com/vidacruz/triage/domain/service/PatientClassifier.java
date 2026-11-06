@@ -1,45 +1,53 @@
 package com.vidacruz.triage.domain.service;
 
-import com.vidacruz.triage.domain.exception.InvalidPatientException;
 import com.vidacruz.triage.domain.model.PatientRegistration;
 import com.vidacruz.triage.domain.model.TriageLevel;
 
 import java.math.BigDecimal;
+import java.util.Objects;
 
 public class PatientClassifier {
 
-    private static final BigDecimal MIN_SPO2 = new BigDecimal("70");
-    private static final BigDecimal MAX_SPO2 = new BigDecimal("100");
-    private static final BigDecimal MIN_TEMPERATURE = new BigDecimal("34.0");
-    private static final BigDecimal MAX_TEMPERATURE = new BigDecimal("42.0");
+    private static final BigDecimal CRITICAL_SPO2_THRESHOLD = new BigDecimal("90");
+    private static final BigDecimal URGENT_SPO2_MIN = new BigDecimal("90");
+    private static final BigDecimal URGENT_SPO2_MAX = new BigDecimal("93");
+    private static final BigDecimal URGENT_TEMPERATURE_THRESHOLD = new BigDecimal("38.5");
+    private static final BigDecimal URGENT_2_TEMPERATURE_MIN = new BigDecimal("38.0");
+    private static final BigDecimal URGENT_2_TEMPERATURE_MAX = new BigDecimal("38.5");
 
+    private static final int CRITICAL_HEART_RATE_MIN = 40;
+    private static final int CRITICAL_HEART_RATE_MAX = 120;
+    private static final int CRITICAL_SYSTOLIC_PRESSURE_MIN = 90;
+    private static final int CRITICAL_GCS_THRESHOLD = 8;
+    private static final int URGENT_SYSTOLIC_PRESSURE_MIN = 90;
+    private static final int URGENT_SYSTOLIC_PRESSURE_MAX = 100;
+    private static final int URGENT_GCS_THRESHOLD = 13;
+    private static final int URGENT_2_HEART_RATE_MIN = 90;
+    private static final int URGENT_2_HEART_RATE_MAX = 120;
+    private static final int URGENT_2_PAIN_THRESHOLD = 7;
+
+    private final PatientRegistrationValidator registrationValidator;
     private final AdministrativeComplaintMatcher complaintMatcher;
 
-    public PatientClassifier(AdministrativeComplaintMatcher complaintMatcher) {
-        this.complaintMatcher = complaintMatcher;
+    public PatientClassifier(
+            PatientRegistrationValidator registrationValidator,
+            AdministrativeComplaintMatcher complaintMatcher) {
+        this.registrationValidator = Objects.requireNonNull(registrationValidator, "registrationValidator");
+        this.complaintMatcher = Objects.requireNonNull(complaintMatcher, "complaintMatcher");
     }
 
     public TriageLevel classify(PatientRegistration registration) {
-        validate(registration);
+        registrationValidator.validate(registration);
 
-        if (registration.frecuenciaCardiacaBpm() < 40
-                || registration.frecuenciaCardiacaBpm() > 120
-                || registration.spo2().compareTo(new BigDecimal("90")) < 0
-                || registration.presionSistolicaMmhg() < 90
-                || registration.gcs() <= 8) {
+        if (isCritical(registration)) {
             return TriageLevel.CRITICO;
         }
 
-        if (between(registration.spo2(), new BigDecimal("90"), new BigDecimal("93"))
-                || between(registration.presionSistolicaMmhg(), 90, 100)
-                || registration.temperaturaC().compareTo(new BigDecimal("38.5")) >= 0
-                || registration.gcs() <= 13) {
+        if (isUrgent(registration)) {
             return TriageLevel.URGENTE;
         }
 
-        if (between(registration.frecuenciaCardiacaBpm(), 90, 120)
-                || between(registration.temperaturaC(), new BigDecimal("38.0"), new BigDecimal("38.5"), false)
-                || registration.dolor() >= 7) {
+        if (isUrgentTwo(registration)) {
             return TriageLevel.URGENTE_2;
         }
 
@@ -48,57 +56,27 @@ public class PatientClassifier {
                 : TriageLevel.NO_URGENTE;
     }
 
-    private void validate(PatientRegistration registration) {
-        if (registration == null) {
-            throw new InvalidPatientException("body", "el cuerpo de la solicitud es obligatorio");
-        }
-        required(registration.nombreCompleto(), "nombreCompleto");
-        String name = registration.nombreCompleto().trim();
-        int nameLength = name.codePointCount(0, name.length());
-        if (nameLength < 3 || nameLength > 100) {
-            invalid("nombreCompleto", "debe tener entre 3 y 100 caracteres");
-        }
-        integer(registration.edad(), 0, 120, "edad");
-        integer(registration.frecuenciaCardiacaBpm(), 20, 250, "frecuenciaCardiacaBpm");
-        integer(registration.presionSistolicaMmhg(), 60, 260, "presionSistolicaMmhg");
-        integer(registration.presionDiastolicaMmhg(), 30, 160, "presionDiastolicaMmhg");
-        if (registration.presionDiastolicaMmhg() >= registration.presionSistolicaMmhg()) {
-            invalid("presionDiastolicaMmhg", "debe ser menor que presionSistolicaMmhg");
-        }
-        decimal(registration.spo2(), MIN_SPO2, MAX_SPO2, "spo2");
-        decimal(registration.temperaturaC(), MIN_TEMPERATURE, MAX_TEMPERATURE, "temperaturaC");
-        integer(registration.dolor(), 0, 10, "dolor");
-        integer(registration.gcs(), 3, 15, "gcs");
-        required(registration.quejaPrincipal(), "quejaPrincipal");
+    private boolean isCritical(PatientRegistration registration) {
+        return registration.frecuenciaCardiacaBpm() < CRITICAL_HEART_RATE_MIN
+                || registration.frecuenciaCardiacaBpm() > CRITICAL_HEART_RATE_MAX
+                || registration.spo2().compareTo(CRITICAL_SPO2_THRESHOLD) < 0
+                || registration.presionSistolicaMmhg() < CRITICAL_SYSTOLIC_PRESSURE_MIN
+                || registration.gcs() <= CRITICAL_GCS_THRESHOLD;
     }
 
-    private void integer(Integer value, int minimum, int maximum, String field) {
-        if (value == null) {
-            invalid(field, "es obligatorio");
-        }
-        if (value < minimum || value > maximum) {
-            invalid(field, "debe estar entre " + minimum + " y " + maximum);
-        }
+    private boolean isUrgent(PatientRegistration registration) {
+        return between(registration.spo2(), URGENT_SPO2_MIN, URGENT_SPO2_MAX)
+                || between(registration.presionSistolicaMmhg(), URGENT_SYSTOLIC_PRESSURE_MIN,
+                        URGENT_SYSTOLIC_PRESSURE_MAX)
+                || registration.temperaturaC().compareTo(URGENT_TEMPERATURE_THRESHOLD) >= 0
+                || registration.gcs() <= URGENT_GCS_THRESHOLD;
     }
 
-    private void decimal(BigDecimal value, BigDecimal minimum, BigDecimal maximum, String field) {
-        if (value == null) {
-            invalid(field, "es obligatorio");
-        }
-        if (value.compareTo(minimum) < 0 || value.compareTo(maximum) > 0) {
-            invalid(field, "debe estar entre " + minimum.stripTrailingZeros().toPlainString()
-                    + " y " + maximum.stripTrailingZeros().toPlainString());
-        }
-    }
-
-    private void required(String value, String field) {
-        if (value == null || value.isBlank()) {
-            invalid(field, "es obligatorio");
-        }
-    }
-
-    private void invalid(String field, String message) {
-        throw new InvalidPatientException(field, field + " " + message);
+    private boolean isUrgentTwo(PatientRegistration registration) {
+        return between(registration.frecuenciaCardiacaBpm(), URGENT_2_HEART_RATE_MIN, URGENT_2_HEART_RATE_MAX)
+                || betweenExclusive(registration.temperaturaC(), URGENT_2_TEMPERATURE_MIN,
+                        URGENT_2_TEMPERATURE_MAX)
+                || registration.dolor() >= URGENT_2_PAIN_THRESHOLD;
     }
 
     private boolean between(Integer value, int minimum, int maximum) {
@@ -109,8 +87,7 @@ public class PatientClassifier {
         return value.compareTo(minimum) >= 0 && value.compareTo(maximum) <= 0;
     }
 
-    private boolean between(BigDecimal value, BigDecimal minimum, BigDecimal maximum, boolean inclusiveMaximum) {
-        return value.compareTo(minimum) >= 0
-                && (inclusiveMaximum ? value.compareTo(maximum) <= 0 : value.compareTo(maximum) < 0);
+    private boolean betweenExclusive(BigDecimal value, BigDecimal minimum, BigDecimal maximum) {
+        return value.compareTo(minimum) >= 0 && value.compareTo(maximum) < 0;
     }
 }

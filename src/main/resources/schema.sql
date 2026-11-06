@@ -35,12 +35,20 @@ CREATE TABLE IF NOT EXISTS outbox_event (
     payload JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL,
     published_at TIMESTAMPTZ,
+    next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     send_attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT
 );
 
+ALTER TABLE outbox_event
+    ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
 CREATE INDEX IF NOT EXISTS idx_outbox_event_pending
     ON outbox_event (created_at)
+    WHERE published_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_outbox_event_pending_due
+    ON outbox_event (next_attempt_at, created_at)
     WHERE published_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_triage_patient_status

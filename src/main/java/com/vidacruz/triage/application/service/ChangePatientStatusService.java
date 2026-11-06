@@ -1,8 +1,9 @@
-package com.vidacruz.triage.application.usecase;
+package com.vidacruz.triage.application.service;
 
-import com.vidacruz.triage.application.port.out.ClinicalAuditPort;
-import com.vidacruz.triage.application.port.out.OutboxPort;
-import com.vidacruz.triage.application.port.out.PatientPersistencePort;
+import com.vidacruz.triage.application.port.in.ChangePatientStatusUseCase;
+import com.vidacruz.triage.application.port.out.ClinicalAuditRepositoryPort;
+import com.vidacruz.triage.application.port.out.OutboxRepositoryPort;
+import com.vidacruz.triage.application.port.out.PatientRepositoryPort;
 import com.vidacruz.triage.application.port.out.TransactionPort;
 import com.vidacruz.triage.domain.exception.InvalidPatientTransitionException;
 import com.vidacruz.triage.domain.exception.PatientNotFoundException;
@@ -17,19 +18,19 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
 
-public class ChangePatientStatusUseCase {
+public class ChangePatientStatusService implements ChangePatientStatusUseCase {
 
-    private final PatientPersistencePort patients;
-    private final ClinicalAuditPort audits;
-    private final OutboxPort outbox;
+    private final PatientRepositoryPort patients;
+    private final ClinicalAuditRepositoryPort audits;
+    private final OutboxRepositoryPort outbox;
     private final PatientStateMachine stateMachine;
     private final TransactionPort transactions;
     private final Clock clock;
 
-    public ChangePatientStatusUseCase(
-            PatientPersistencePort patients,
-            ClinicalAuditPort audits,
-            OutboxPort outbox,
+    public ChangePatientStatusService(
+            PatientRepositoryPort patients,
+            ClinicalAuditRepositoryPort audits,
+            OutboxRepositoryPort outbox,
             PatientStateMachine stateMachine,
             TransactionPort transactions,
             Clock clock) {
@@ -41,7 +42,8 @@ public class ChangePatientStatusUseCase {
         this.clock = clock;
     }
 
-    public Mono<Patient> execute(UUID patientId, PatientStatus requestedStatus, String correlationId) {
+    @Override
+    public Mono<Patient> changeStatus(UUID patientId, PatientStatus requestedStatus, String correlationId) {
         return Mono.defer(() -> patients.findById(patientId)
                 .switchIfEmpty(Mono.error(new PatientNotFoundException(patientId)))
                 .flatMap(current -> {
