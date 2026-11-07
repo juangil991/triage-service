@@ -169,6 +169,89 @@ class PatientFlowIntegrationTest {
     }
 
     @Test
+    void operationalReportGroupsRegistrationsAndCalculatesWaitStatisticsInSql() {
+        insertReportPatient(
+                UUID.randomUUID(), "CRITICO", "EN_CONSULTA",
+                OffsetDateTime.parse("2025-01-15T10:15:00Z"),
+                OffsetDateTime.parse("2025-01-15T10:25:00Z"));
+        insertReportPatient(
+                UUID.randomUUID(), "URGENTE", "EN_CONSULTA",
+                OffsetDateTime.parse("2025-01-15T10:45:00Z"),
+                OffsetDateTime.parse("2025-01-15T11:05:00Z"));
+        insertReportPatient(
+                UUID.randomUUID(), "NO_URGENTE", "ALTA",
+                OffsetDateTime.parse("2025-01-15T10:55:00Z"), null);
+        insertReportPatient(
+                UUID.randomUUID(), "URGENTE_2", "EN_CONSULTA",
+                OffsetDateTime.parse("2025-01-15T11:20:00Z"),
+                OffsetDateTime.parse("2025-01-15T11:50:00Z"));
+
+        webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/triage/reportes/operacion")
+                        .queryParam("desde", "2025-01-15T10:00:00Z")
+                        .queryParam("hasta", "2025-01-15T12:00:00Z")
+                        .build())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(2)
+                .jsonPath("$[0].hora").isEqualTo("2025-01-15T10:00:00Z")
+                .jsonPath("$[0].totalPacientesRegistrados").isEqualTo(3)
+                .jsonPath("$[0].critico").isEqualTo(1)
+                .jsonPath("$[0].urgente").isEqualTo(1)
+                .jsonPath("$[0].noUrgente").isEqualTo(1)
+                .jsonPath("$[0].tiempoPromedioEsperaMinutos").isEqualTo(15.0)
+                .jsonPath("$[0].p95TiempoEsperaMinutos").isEqualTo(20.0)
+                .jsonPath("$[1].hora").isEqualTo("2025-01-15T11:00:00Z")
+                .jsonPath("$[1].totalPacientesRegistrados").isEqualTo(1)
+                .jsonPath("$[1].urgente2").isEqualTo(1)
+                .jsonPath("$[1].tiempoPromedioEsperaMinutos").isEqualTo(30.0)
+                .jsonPath("$[1].p95TiempoEsperaMinutos").isEqualTo(30.0);
+    }
+
+    @Test
+    void operationalReportUsesNearestRankForP95InsteadOfMaximum() {
+        OffsetDateTime registeredAt = OffsetDateTime.parse("2025-02-01T10:00:00Z");
+        for (int waitMinutes = 1; waitMinutes <= 20; waitMinutes++) {
+            insertReportPatient(
+                    UUID.randomUUID(),
+                    "NO_URGENTE",
+                    "EN_CONSULTA",
+                    registeredAt,
+                    registeredAt.plusMinutes(waitMinutes));
+        }
+
+        webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/triage/reportes/operacion")
+                        .queryParam("desde", "2025-02-01T10:00:00Z")
+                        .queryParam("hasta", "2025-02-01T11:00:00Z")
+                        .build())
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.length()").isEqualTo(1)
+                .jsonPath("$[0].totalPacientesRegistrados").isEqualTo(20)
+                .jsonPath("$[0].tiempoPromedioEsperaMinutos").isEqualTo(10.5)
+                .jsonPath("$[0].p95TiempoEsperaMinutos").isEqualTo(19.0);
+    }
+
+    @Test
+    void operationalReportRejectsAnInvalidDateRange() {
+        webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/triage/reportes/operacion")
+                        .queryParam("desde", "2025-01-15T12:00:00Z")
+                        .queryParam("hasta", "2025-01-15T10:00:00Z")
+                        .build())
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.mensaje").isEqualTo("desde debe ser anterior a hasta");
+    }
+
+    @Test
     void overdueRegisteredPatientIsEscalatedOnceAndPublishesEvent() throws Exception {
         UUID patientId = registerPatient(UUID.randomUUID());
         database.sql("""
@@ -735,6 +818,49 @@ class PatientFlowIntegrationTest {
 
     private void executeSql(String sql) {
         database.sql(sql).then().block(Duration.ofSeconds(5));
+    }
+
+    private void insertReportPatient(
+            UUID id,
+            String level,
+            String status,
+            OffsetDateTime registeredAt,
+            OffsetDateTime consultationAt) {
+        database.sql("""
+                INSERT INTO triage_patient (
+                    id, nombre_completo, edad, frecuencia_cardiaca_bpm,
+                    presion_sistolica_mmhg, presion_diastolica_mmhg, spo2,
+                    temperatura_c, dolor, gcs, queja_principal, nivel_clasificado,
+                    sla_minutos, estado, escalado, fecha_registro, fecha_inicio_estado
+                )
+                VALUES (
+                    :id, 'Paciente de Reporte', 35, 80, 120, 80, 98,
+                    36.8, 2, 15, 'Prueba de reporte', :level,
+                    60, :status, FALSE, :registered_at, :state_started_at
+                )
+                """)
+                .bind("id", id)
+                .bind("level", level)
+                .bind("status", status)
+                .bind("registered_at", registeredAt)
+                .bind("state_started_at", consultationAt == null ? registeredAt : consultationAt)
+                .then()
+                .block(Duration.ofSeconds(5));
+
+        if (consultationAt != null) {
+            database.sql("""
+                    INSERT INTO clinical_audit (
+                        id, patient_id, occurred_at, previous_status, new_status, event_type
+                    )
+                    VALUES (:audit_id, :patient_id, :occurred_at,
+                            'REGISTRADO', 'EN_CONSULTA', 'paciente_en_consulta')
+                    """)
+                    .bind("audit_id", UUID.randomUUID())
+                    .bind("patient_id", id)
+                    .bind("occurred_at", consultationAt)
+                    .then()
+                    .block(Duration.ofSeconds(5));
+        }
     }
 
     private void installOutboxFailureTrigger(String correlationId) {

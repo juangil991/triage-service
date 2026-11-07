@@ -53,3 +53,9 @@ CREATE INDEX IF NOT EXISTS idx_outbox_event_pending_due
 
 CREATE INDEX IF NOT EXISTS idx_triage_patient_status
     ON triage_patient (estado, fecha_inicio_estado);
+
+CREATE INDEX IF NOT EXISTS idx_triage_patient_fecha_registro
+    ON triage_patient (fecha_registro);
+
+CREATE INDEX IF NOT EXISTS idx_clinical_audit_patient_event_occurred
+    ON clinical_audit (patient_id, event_type, occurred_at);

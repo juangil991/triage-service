@@ -51,3 +51,7 @@ El API queda disponible en `http://localhost:8080`; la readiness se consulta en 
 ## Monitoreo de SLA (RF-03)
 
 El monitor periódico escala los pacientes que siguen en `REGISTRADO` al vencer el SLA guardado en cada registro. Los SLA iniciales por nivel y el intervalo del monitor se pueden ajustar con `TRIAGE_SLA_*_MINUTOS` y `TRIAGE_ESCALATION_POLL_INTERVAL_MS` en `.env`; los cambios de SLA aplican a registros nuevos. El escalamiento actualiza el flag `escalado`, crea auditoría clínica y encola `paciente_escalado` en el outbox para su publicación a Kafka.
+
+## Reporte de operación (RF-05)
+
+`GET /triage/reportes/operacion?desde=2026-11-06T00:00:00Z&hasta=2026-11-07T00:00:00Z` devuelve una fila por hora UTC con el total de registros, conteos por nivel y promedio/p95 del tiempo entre registro y primera entrada a consulta. El rango usa `desde` inclusivo y `hasta` exclusivo; los tiempos de espera consideran solo pacientes que entraron a consulta y se expresan en minutos. Los conteos, promedio y p95 se calculan en PostgreSQL.

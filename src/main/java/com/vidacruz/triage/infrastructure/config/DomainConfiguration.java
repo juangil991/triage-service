@@ -2,14 +2,17 @@ package com.vidacruz.triage.infrastructure.config;
 
 import com.vidacruz.triage.application.port.in.ChangePatientStatusUseCase;
 import com.vidacruz.triage.application.port.in.EscalateOverduePatientsUseCase;
+import com.vidacruz.triage.application.port.in.GetOperationalReportUseCase;
 import com.vidacruz.triage.application.port.in.GetPatientUseCase;
 import com.vidacruz.triage.application.port.in.RegisterPatientUseCase;
 import com.vidacruz.triage.application.port.out.ClinicalAuditRepositoryPort;
 import com.vidacruz.triage.application.port.out.OutboxRepositoryPort;
+import com.vidacruz.triage.application.port.out.OperationalReportRepositoryPort;
 import com.vidacruz.triage.application.port.out.PatientRepositoryPort;
 import com.vidacruz.triage.application.port.out.TransactionPort;
 import com.vidacruz.triage.application.service.ChangePatientStatusService;
 import com.vidacruz.triage.application.service.EscalateOverduePatientsService;
+import com.vidacruz.triage.application.service.GetOperationalReportService;
 import com.vidacruz.triage.application.service.GetPatientService;
 import com.vidacruz.triage.application.service.RegisterPatientService;
 import com.vidacruz.triage.domain.service.AdministrativeComplaintMatcher;
@@ -69,6 +72,11 @@ public class DomainConfiguration {
     @Bean
     GetPatientUseCase getPatientUseCase(PatientRepositoryPort patients) {
         return new GetPatientService(patients);
+    }
+
+    @Bean
+    GetOperationalReportUseCase getOperationalReportUseCase(OperationalReportRepositoryPort reports) {
+        return new GetOperationalReportService(reports);
     }
 
     @Bean
