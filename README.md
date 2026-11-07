@@ -48,6 +48,16 @@ docker compose up --build -d
 
 Triaje queda disponible en `http://localhost:8080` y el Asistente en `http://localhost:8081`. La readiness de ambos se consulta en `/actuator/health/readiness`; la vista de urgencias está en `GET http://localhost:8081/asistente/estado-urgencias`.
 
+## Autenticación de API
+
+Las rutas de negocio de Triage requieren la cabecera `X-API-Key` con el valor de `TRIAGE_API_KEY`. Configura claves aleatorias distintas en el `.env` usado por Compose: el `.env` de la raíz para levantar ambos servicios o `vidacruz-triage/.env` para su Compose independiente. El servicio falla al arrancar si su clave no está configurada. Las rutas `/actuator/health`, `/actuator/health/**` (incluidas readiness y liveness) permanecen públicas para los healthchecks; las demás rutas requieren autenticación.
+
+Ejemplo:
+
+```powershell
+curl.exe -H "X-API-Key: $env:TRIAGE_API_KEY" http://localhost:8080/triage/pacientes
+```
+
 ## Monitoreo de SLA (RF-03)
 
 El monitor periódico escala los pacientes que siguen en `REGISTRADO` al vencer el SLA guardado en cada registro. Los SLA iniciales por nivel y el intervalo del monitor se pueden ajustar con `TRIAGE_SLA_*_MINUTOS` y `TRIAGE_ESCALATION_POLL_INTERVAL_MS` en `.env`; los cambios de SLA aplican a registros nuevos. El escalamiento actualiza el flag `escalado`, crea auditoría clínica y encola `paciente_escalado` en el outbox para su publicación a Kafka.

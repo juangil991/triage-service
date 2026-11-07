@@ -11,6 +11,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.reactive.AutoConfigureWebTestClient;
@@ -47,6 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PatientFlowIntegrationTest {
 
     private static final String TOPIC = "triaje.eventos.integration";
+    private static final String API_KEY = "integration-triage-key";
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -73,6 +75,7 @@ class PatientFlowIntegrationTest {
 
     @DynamicPropertySource
     static void applicationProperties(DynamicPropertyRegistry registry) {
+        registry.add("app.security.api-key", () -> API_KEY);
         registry.add("spring.r2dbc.url", () -> "r2dbc:postgresql://"
                 + POSTGRES.getHost() + ":" + POSTGRES.getMappedPort(5432)
                 + "/" + POSTGRES.getDatabaseName());
@@ -82,6 +85,11 @@ class PatientFlowIntegrationTest {
         registry.add("app.kafka.topic", () -> TOPIC);
         registry.add("app.outbox.poll-interval-ms", () -> "100");
         registry.add("app.triage.escalation.poll-interval-ms", () -> "100");
+    }
+
+    @BeforeEach
+    void configureApiKey() {
+        webClient = webClient.mutate().defaultHeader("X-API-Key", API_KEY).build();
     }
 
     @BeforeAll

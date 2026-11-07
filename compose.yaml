@@ -76,6 +76,7 @@ services:
       R2DBC_URL: r2dbc:postgresql://postgres:5432/${POSTGRES_DB:-vidacruz}
       DB_USERNAME: ${DB_USERNAME:?Set DB_USERNAME in .env}
       DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      TRIAGE_API_KEY: ${TRIAGE_API_KEY:?Set TRIAGE_API_KEY in .env}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TRIAGE_TOPIC: triaje.eventos
       OUTBOX_POLL_INTERVAL_MS: ${OUTBOX_POLL_INTERVAL_MS:-1000}
