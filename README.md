@@ -48,6 +48,12 @@ docker compose up --build -d
 
 Triaje queda disponible en `http://localhost:8080` y el Asistente en `http://localhost:8081`. La readiness de ambos se consulta en `/actuator/health/readiness`; la vista de urgencias está en `GET http://localhost:8081/asistente/estado-urgencias`.
 
+## Monitoreo local
+
+El Compose de la raíz también levanta Prometheus y Grafana. Prometheus consulta las métricas de Triage y Agent cada 15 segundos mediante `Authorization: Bearer` con las API keys ya configuradas, sin publicar su puerto en el host. Esa forma de autenticación se acepta solo en `/actuator/prometheus`; las rutas de negocio siguen requiriendo `X-API-Key`. Grafana queda disponible en `http://localhost:${GRAFANA_PORT:-3000}`; inicia sesión como `admin` usando `GRAFANA_ADMIN_PASSWORD` del `.env`. El dashboard `VidaCruz - Operaciones` se provisiona automáticamente e incluye disponibilidad, solicitudes HTTP, clasificaciones, escalamientos, latencia del LLM y memoria heap.
+
+Configura un valor no trivial para `GRAFANA_ADMIN_PASSWORD` en `.env` antes de levantar el stack. Las API keys no se guardan en la configuración de monitoreo versionada.
+
 ## Autenticación de API
 
 Las rutas de negocio de Triage requieren la cabecera `X-API-Key` con el valor de `TRIAGE_API_KEY`. Configura claves aleatorias distintas en el `.env` usado por Compose: el `.env` de la raíz para levantar ambos servicios o `vidacruz-triage/.env` para su Compose independiente. El servicio falla al arrancar si su clave no está configurada. Las rutas `/actuator/health`, `/actuator/health/**` (incluidas readiness y liveness) permanecen públicas para los healthchecks; las demás rutas requieren autenticación.
