@@ -106,11 +106,11 @@ class PatientFlowIntegrationTest {
                         {
                           "nombreCompleto": "Paciente de Integración",
                           "edad": 35,
-                          "frecuenciaCardiacaBpm": 80,
-                          "presionSistolicaMmhg": 120,
-                          "presionDiastolicaMmhg": 80,
-                          "spo2": 98,
-                          "temperaturaC": 36.8,
+                          "frecuenciaCardiaca": 80,
+                          "presionSistolica": 120,
+                          "presionDiastolica": 80,
+                          "spO2": 98,
+                          "temperatura": 36.8,
                           "dolor": 2,
                           "gcs": 15,
                           "quejaPrincipal": "Molestia leve"
@@ -124,7 +124,10 @@ class PatientFlowIntegrationTest {
         JsonNode registered = registration.getResponseBody();
         assertThat(registered).isNotNull();
         UUID patientId = UUID.fromString(registered.path("id").asText());
-        assertThat(registered.path("nivelClasificado").asText()).isEqualTo("NO_URGENTE");
+        assertThat(registered.path("nivel").asText()).isEqualTo("NO_URGENTE");
+        assertThat(registered.has("nivelClasificado")).isFalse();
+        assertThat(registered.path("frecuenciaCardiacaBpm").asInt()).isEqualTo(80);
+        assertThat(registered.path("spo2").asDouble()).isEqualTo(98.0);
         assertThat(registered.path("slaMinutos").asInt()).isEqualTo(60);
         assertThat(registered.path("estado").asText()).isEqualTo("REGISTRADO");
 
@@ -134,6 +137,7 @@ class PatientFlowIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.id").isEqualTo(patientId.toString())
+                .jsonPath("$.nivel").isEqualTo("NO_URGENTE")
                 .jsonPath("$.estado").isEqualTo("REGISTRADO");
 
         changeStatus(patientId, "EN_CONSULTA", correlationId);
@@ -144,6 +148,7 @@ class PatientFlowIntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
+                .jsonPath("$.nivel").isEqualTo("NO_URGENTE")
                 .jsonPath("$.estado").isEqualTo("ALTA");
 
         Map<String, ObservedEvent> events = awaitEvents(patientId, 3);
@@ -166,6 +171,49 @@ class PatientFlowIntegrationTest {
                         AND previous_status = 'EN_CONSULTA' AND new_status = 'ALTA'))
                 """, patientId)).isEqualTo(3);
         awaitPublishedEvents(patientId, 3);
+    }
+
+    @Test
+    void registrationClassifiesAndPersistsVerificationMatrixE1ThroughE6() {
+        List<RegistrationMatrixCase> cases = List.of(
+                new RegistrationMatrixCase("E1", 130, 180, 110, 97, 36.8, 8, 15, "Dolor torácico",
+                        "CRITICO", 5),
+                new RegistrationMatrixCase("E2", 95, 150, 95, 91, 37.0, 4, 15, "Dificultad para respirar",
+                        "URGENTE", 10),
+                new RegistrationMatrixCase("E3", 88, 130, 85, 98, 38.2, 6, 15, "Fiebre",
+                        "URGENTE_2", 30),
+                new RegistrationMatrixCase("E4", 72, 120, 80, 99, 36.5, 2, 15, "Herida por cortar",
+                        "NO_URGENTE", 60),
+                new RegistrationMatrixCase("E5", 70, 115, 75, 99, 36.4, 0, 15, "Renovación de recetario",
+                        "NO_URGENTE_2", 120),
+                new RegistrationMatrixCase("E6", 35, 80, 50, 85, 35.9, 0, 6, "Inconsciente",
+                        "CRITICO", 5));
+
+        for (RegistrationMatrixCase testCase : cases) {
+            EntityExchangeResult<JsonNode> registration = webClient.post()
+                    .uri("/triage/pacientes")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(matrixRegistrationBody(testCase))
+                    .exchange()
+                    .expectStatus().isCreated()
+                    .expectBody(JsonNode.class)
+                    .returnResult();
+
+            JsonNode registered = registration.getResponseBody();
+            assertThat(registered).as(testCase.id()).isNotNull();
+            UUID patientId = UUID.fromString(registered.path("id").asText());
+            assertThat(registered.path("nivel").asText()).as(testCase.id()).isEqualTo(testCase.expectedLevel());
+            assertThat(registered.path("slaMinutos").asInt()).as(testCase.id()).isEqualTo(testCase.expectedSlaMinutes());
+
+            webClient.get()
+                    .uri("/triage/pacientes/{id}", patientId)
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectBody()
+                    .jsonPath("$.nivel").isEqualTo(testCase.expectedLevel())
+                    .jsonPath("$.slaMinutos").isEqualTo(testCase.expectedSlaMinutes())
+                    .jsonPath("$.estado").isEqualTo("REGISTRADO");
+        }
     }
 
     @Test
@@ -346,7 +394,7 @@ class PatientFlowIntegrationTest {
         long auditsBefore = countRows("clinical_audit");
         long eventsBefore = countRows("outbox_event");
         List<InvalidRegistration> invalidRequests = List.of(
-                new InvalidRegistration(validRegistrationBody().replace("\"spo2\": 98", "\"spo2\": 69"), "spo2"),
+                new InvalidRegistration(validRegistrationBody().replace("\"spO2\": 98", "\"spO2\": 69"), "spO2"),
                 new InvalidRegistration(validRegistrationBody().replace(
                         "\"nombreCompleto\": \"Paciente de Integración\"", "\"nombreCompleto\": \"  \""),
                         "nombreCompleto"),
@@ -577,6 +625,7 @@ class PatientFlowIntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
+                .jsonPath("$.nivel").isEqualTo("NO_URGENTE")
                 .jsonPath("$.estado").isEqualTo(status);
     }
 
@@ -660,16 +709,42 @@ class PatientFlowIntegrationTest {
                 {
                   "nombreCompleto": "Paciente de Integración",
                   "edad": 35,
-                  "frecuenciaCardiacaBpm": 80,
-                  "presionSistolicaMmhg": 120,
-                  "presionDiastolicaMmhg": 80,
-                  "spo2": 98,
-                  "temperaturaC": 36.8,
+                  "frecuenciaCardiaca": 80,
+                  "presionSistolica": 120,
+                  "presionDiastolica": 80,
+                  "spO2": 98,
+                  "temperatura": 36.8,
                   "dolor": 2,
                   "gcs": 15,
                   "quejaPrincipal": "Molestia leve"
                 }
                 """;
+    }
+
+    private String matrixRegistrationBody(RegistrationMatrixCase testCase) {
+        return """
+                {
+                  "nombreCompleto": "Paciente %s",
+                  "edad": 35,
+                  "frecuenciaCardiaca": %d,
+                  "presionSistolica": %d,
+                  "presionDiastolica": %d,
+                  "spO2": %s,
+                  "temperatura": %s,
+                  "dolor": %d,
+                  "gcs": %d,
+                  "quejaPrincipal": "%s"
+                }
+                """.formatted(
+                testCase.id(),
+                testCase.heartRate(),
+                testCase.systolicPressure(),
+                testCase.diastolicPressure(),
+                testCase.spo2(),
+                testCase.temperature(),
+                testCase.pain(),
+                testCase.gcs(),
+                testCase.complaint());
     }
 
     private UUID insertDelayedRetryEvent(int attempts) {
@@ -888,6 +963,20 @@ class PatientFlowIntegrationTest {
     }
 
     private record InvalidRegistration(String body, String field) {
+    }
+
+    private record RegistrationMatrixCase(
+            String id,
+            int heartRate,
+            int systolicPressure,
+            int diastolicPressure,
+            int spo2,
+            double temperature,
+            int pain,
+            int gcs,
+            String complaint,
+            String expectedLevel,
+            int expectedSlaMinutes) {
     }
 
     private record ObservedEvent(String key, JsonNode value) {

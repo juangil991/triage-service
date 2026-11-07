@@ -73,6 +73,27 @@ class PatientClassifierTest {
     }
 
     @Test
+    void classifiesVerificationMatrixE1ThroughE6() {
+        List<MatrixCase> cases = List.of(
+                new MatrixCase("E1", patient(130, 180, 110, "97", "36.8", 8, 15, "Dolor torácico"),
+                        TriageLevel.CRITICO),
+                new MatrixCase("E2", patient(95, 150, 95, "91", "37.0", 4, 15, "Dificultad para respirar"),
+                        TriageLevel.URGENTE),
+                new MatrixCase("E3", patient(88, 130, 85, "98", "38.2", 6, 15, "Fiebre"),
+                        TriageLevel.URGENTE_2),
+                new MatrixCase("E4", patient(72, 120, 80, "99", "36.5", 2, 15, "Herida por cortar"),
+                        TriageLevel.NO_URGENTE),
+                new MatrixCase("E5", patient(70, 115, 75, "99", "36.4", 0, 15, "Renovación de recetario"),
+                        TriageLevel.NO_URGENTE_2),
+                new MatrixCase("E6", patient(35, 80, 50, "85", "35.9", 0, 6, "Inconsciente"),
+                        TriageLevel.CRITICO));
+
+        for (MatrixCase testCase : cases) {
+            assertEquals(testCase.expected(), classifier.classify(testCase.registration()), testCase.id());
+        }
+    }
+
+    @Test
     void rejectsDiastolicPressureNotLowerThanSystolic() {
         PatientRegistration patient = patient(80, 120, 120, "98", "37.0", 2, 15, "consulta");
 
@@ -233,5 +254,8 @@ class PatientClassifierTest {
     }
 
     private record ClassificationCase(PatientRegistration registration, TriageLevel expected) {
+    }
+
+    private record MatrixCase(String id, PatientRegistration registration, TriageLevel expected) {
     }
 }

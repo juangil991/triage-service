@@ -9,6 +9,7 @@ import com.vidacruz.triage.domain.model.Patient;
 import com.vidacruz.triage.domain.model.PatientEvent;
 import com.vidacruz.triage.domain.model.PatientStatus;
 import com.vidacruz.triage.domain.model.TriageLevel;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
@@ -41,6 +42,7 @@ class EscalateOverduePatientsServiceTest {
             return work;
         }
     };
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
     private EscalateOverduePatientsService service;
 
@@ -51,7 +53,8 @@ class EscalateOverduePatientsServiceTest {
                 audits,
                 outbox,
                 transactions,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                Clock.fixed(NOW, ZoneOffset.UTC),
+                meterRegistry);
         when(audits.save(any())).thenReturn(Mono.empty());
         when(outbox.save(any())).thenReturn(Mono.empty());
     }
@@ -72,6 +75,8 @@ class EscalateOverduePatientsServiceTest {
                 && event.correlationId() != null
                 && !event.correlationId().isBlank()
                 && event.payload().escalado()));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                1.0, meterRegistry.get("vidacruz.triage.escalations").counter().count());
     }
 
     @Test
@@ -84,6 +89,8 @@ class EscalateOverduePatientsServiceTest {
 
         verify(audits, never()).save(any(ClinicalAudit.class));
         verify(outbox, never()).save(any(PatientEvent.class));
+        org.junit.jupiter.api.Assertions.assertEquals(
+                0.0, meterRegistry.get("vidacruz.triage.escalations").counter().count());
     }
 
     private boolean isEscalationAudit(ClinicalAudit audit, UUID patientId) {

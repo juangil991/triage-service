@@ -5,20 +5,25 @@ import com.vidacruz.triage.application.port.in.GetPatientUseCase;
 import com.vidacruz.triage.application.port.in.RegisterPatientUseCase;
 import com.vidacruz.triage.domain.exception.InvalidPatientException;
 import com.vidacruz.triage.domain.exception.InvalidPatientTransitionException;
+import com.vidacruz.triage.domain.model.PatientRegistration;
 import com.vidacruz.triage.domain.model.PatientStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PatientControllerTest {
@@ -33,6 +38,7 @@ class PatientControllerTest {
         client = WebTestClient.bindToController(
                         new PatientController(registerPatient, getPatient, changePatientStatus, Clock.systemUTC()))
                 .controllerAdvice(new ApiExceptionHandler())
+                .webFilter(new CorrelationIdWebFilter())
                 .build();
     }
 
@@ -43,16 +49,17 @@ class PatientControllerTest {
 
         client.post()
                 .uri("/triage/pacientes")
+                .header(CorrelationIdWebFilter.HEADER_NAME, "trace-patient-1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {
                           "nombreCompleto": "Paciente de Prueba",
                           "edad": 40,
-                          "frecuenciaCardiacaBpm": 80,
-                          "presionSistolicaMmhg": 120,
-                          "presionDiastolicaMmhg": 80,
-                          "spo2": 69,
-                          "temperaturaC": 37.0,
+                          "frecuenciaCardiaca": 80,
+                          "presionSistolica": 120,
+                          "presionDiastolica": 80,
+                          "spO2": 69,
+                          "temperatura": 37.0,
                           "dolor": 2,
                           "gcs": 15,
                           "quejaPrincipal": "consulta"
@@ -60,9 +67,24 @@ class PatientControllerTest {
                         """)
                 .exchange()
                 .expectStatus().isBadRequest()
+                .expectHeader().valueEquals(CorrelationIdWebFilter.HEADER_NAME, "trace-patient-1")
                 .expectBody()
-                .jsonPath("$.campo").isEqualTo("spo2")
-                .jsonPath("$.mensaje").isEqualTo("spo2 debe estar entre 70 y 100");
+                .jsonPath("$.campo").isEqualTo("spO2")
+                .jsonPath("$.mensaje").isEqualTo("spO2 debe estar entre 70 y 100");
+
+        ArgumentCaptor<PatientRegistration> registration = ArgumentCaptor.forClass(PatientRegistration.class);
+        verify(registerPatient).register(registration.capture(), anyString());
+        assertEquals(new PatientRegistration(
+                "Paciente de Prueba",
+                40,
+                80,
+                120,
+                80,
+                new BigDecimal("69"),
+                new BigDecimal("37.0"),
+                2,
+                15,
+                "consulta"), registration.getValue());
     }
 
     @Test

@@ -17,8 +17,28 @@ public class ApiExceptionHandler {
     @ExceptionHandler(InvalidPatientException.class)
     ResponseEntity<Map<String, String>> invalidPatient(InvalidPatientException exception) {
         return ResponseEntity.badRequest().body(Map.of(
-                "campo", exception.field(),
-                "mensaje", exception.getMessage()));
+                "campo", requestFieldName(exception.field()),
+                "mensaje", requestMessage(exception.getMessage())));
+    }
+
+    private String requestFieldName(String field) {
+        return switch (field) {
+            case "frecuenciaCardiacaBpm" -> "frecuenciaCardiaca";
+            case "presionSistolicaMmhg" -> "presionSistolica";
+            case "presionDiastolicaMmhg" -> "presionDiastolica";
+            case "spo2" -> "spO2";
+            case "temperaturaC" -> "temperatura";
+            default -> field;
+        };
+    }
+
+    private String requestMessage(String message) {
+        return message
+                .replace("frecuenciaCardiacaBpm", "frecuenciaCardiaca")
+                .replace("presionSistolicaMmhg", "presionSistolica")
+                .replace("presionDiastolicaMmhg", "presionDiastolica")
+                .replace("spo2", "spO2")
+                .replace("temperaturaC", "temperatura");
     }
 
     @ExceptionHandler(InvalidPatientTransitionException.class)

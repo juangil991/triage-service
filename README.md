@@ -4,12 +4,12 @@ Servicio reactivo para registrar pacientes, clasificarlos con reglas determinís
 
 ## Requisitos
 
-- JDK 17 o superior.
+- JDK 21 o superior.
 - Para pruebas de integración: Docker o Podman con una API compatible con Docker.
 
 ## Probar
 
-Desde PowerShell, en la raíz del repositorio:
+Desde PowerShell, en `vidacruz-triage`:
 
 ```powershell
 .\gradlew.bat test
@@ -21,7 +21,7 @@ Las pruebas unitarias no requieren contenedores. El test de integración está e
 .\gradlew.bat integrationTest
 ```
 
-Con Podman en Windows, ejecuta las pruebas dentro de Gradle/JDK 17 y monta el socket de la máquina:
+Con Podman en Windows, ejecuta las pruebas dentro de Gradle/JDK 21 y monta el socket de la máquina:
 
 ```powershell
 podman machine start
@@ -32,25 +32,54 @@ podman run --rm `
   -e DOCKER_HOST=unix:///var/run/docker.sock `
   -e TESTCONTAINERS_HOST_OVERRIDE=host.containers.internal `
   -e TESTCONTAINERS_RYUK_DISABLED=true `
-  docker.io/library/gradle:8.10.2-jdk17 bash ./gradlew --no-daemon integrationTest
+  docker.io/library/gradle:8.10.2-jdk21 bash ./gradlew --no-daemon integrationTest
 ```
 
 La tarea `integrationTest` usa Testcontainers con PostgreSQL y Kafka reales. No usa H2: el esquema y las consultas dependen de características específicas de PostgreSQL.
 
 ## Probar manualmente con Compose
 
-Copia `.env.example` a `.env` si todavía no existe y levanta el servicio con sus dependencias:
+Desde la raíz `VidaCruz`, copia `.env.example` a `.env` si todavía no existe y levanta ambos servicios con sus dependencias:
 
 ```powershell
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 docker compose up --build -d
 ```
 
-El API queda disponible en `http://localhost:8080`; la readiness se consulta en `/actuator/health/readiness`.
+Triaje queda disponible en `http://localhost:8080` y el Asistente en `http://localhost:8081`. La readiness de ambos se consulta en `/actuator/health/readiness`; la vista de urgencias está en `GET http://localhost:8081/asistente/estado-urgencias`.
 
 ## Monitoreo de SLA (RF-03)
 
 El monitor periódico escala los pacientes que siguen en `REGISTRADO` al vencer el SLA guardado en cada registro. Los SLA iniciales por nivel y el intervalo del monitor se pueden ajustar con `TRIAGE_SLA_*_MINUTOS` y `TRIAGE_ESCALATION_POLL_INTERVAL_MS` en `.env`; los cambios de SLA aplican a registros nuevos. El escalamiento actualiza el flag `escalado`, crea auditoría clínica y encola `paciente_escalado` en el outbox para su publicación a Kafka.
+
+## Alertas de escalamiento (RF-06)
+
+El equipo médico recibe alertas mediante un webhook HTTP(S) configurable. El consumidor del servicio Triage usa un grupo Kafka independiente (`vidacruz-triage-alerts`) y procesa `paciente_escalado` desde `triaje.eventos`; los demás eventos se confirman sin enviar alertas. Esta integración mantiene la notificación fuera de la transacción clínica y permite conectar un receptor HTTP existente sin acoplar Triage a un proveedor de correo o mensajería.
+
+Para activarlo, configura en el `.env` de la raíz:
+
+```dotenv
+TRIAGE_ALERT_WEBHOOK_ENABLED=true
+TRIAGE_ALERT_WEBHOOK_URL=https://receptor-medico.example/alerts
+```
+
+La URL puede contener credenciales del receptor; mantenla en variables de entorno y no la agregues al repositorio. Cuando el flag está activo, la aplicación requiere una URL HTTP(S) válida; por defecto está desactivado para permitir el desarrollo local sin un receptor configurado.
+
+El servicio envía un `POST` con `Content-Type: application/json` y la cabecera `Idempotency-Key` igual al `eventId`. El cuerpo contiene `eventId`, `eventType`, `patientId`, `triageLevel`, `escalatedAt`, `slaMinutes` y `correlationId`. Por ejemplo:
+
+```json
+{
+  "eventId": "c0a80123-4567-489a-9abc-123456789abc",
+  "eventType": "paciente_escalado",
+  "patientId": "a0a80123-4567-489a-9abc-123456789abc",
+  "triageLevel": "CRITICO",
+  "escalatedAt": "2026-11-06T14:00:00Z",
+  "slaMinutes": 5,
+  "correlationId": "req-123"
+}
+```
+
+Solo una respuesta HTTP `2xx` confirma la entrega; cada petición tiene un timeout de 10 segundos. El offset Kafka se confirma después de la respuesta exitosa; los errores provocan reintentos con backoff y, durante una interrupción del receptor, pueden retrasar otros eventos del mismo topic. La entrega es al menos una vez: un fallo después de que el receptor procese la petición pero antes de confirmar el offset puede repetirla, por lo que el receptor debe deduplicar usando `Idempotency-Key`. La política `earliest` permite recuperar eventos del topic retenidos al iniciar un grupo nuevo.
 
 ## Reporte de operación (RF-05)
 

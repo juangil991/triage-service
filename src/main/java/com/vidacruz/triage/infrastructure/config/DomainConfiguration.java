@@ -20,6 +20,7 @@ import com.vidacruz.triage.domain.service.PatientClassifier;
 import com.vidacruz.triage.domain.service.PatientRegistrationValidator;
 import com.vidacruz.triage.domain.service.PatientStateMachine;
 import com.vidacruz.triage.domain.service.TriageSlaPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -65,8 +66,10 @@ public class DomainConfiguration {
             PatientClassifier classifier,
             TransactionPort transactions,
             Clock clock,
-            TriageSlaPolicy slaPolicy) {
-        return new RegisterPatientService(patients, audits, outbox, classifier, transactions, clock, slaPolicy);
+            TriageSlaPolicy slaPolicy,
+            MeterRegistry meterRegistry) {
+        return new RegisterPatientService(
+                patients, audits, outbox, classifier, transactions, clock, slaPolicy, meterRegistry);
     }
 
     @Bean
@@ -96,8 +99,9 @@ public class DomainConfiguration {
             ClinicalAuditRepositoryPort audits,
             OutboxRepositoryPort outbox,
             TransactionPort transactions,
-            Clock clock) {
-        return new EscalateOverduePatientsService(patients, audits, outbox, transactions, clock);
+            Clock clock,
+            MeterRegistry meterRegistry) {
+        return new EscalateOverduePatientsService(patients, audits, outbox, transactions, clock, meterRegistry);
     }
 
     @Bean

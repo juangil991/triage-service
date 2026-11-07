@@ -13,6 +13,11 @@ import com.vidacruz.triage.domain.model.PatientStatus;
 import com.vidacruz.triage.domain.model.TriageLevel;
 import com.vidacruz.triage.domain.service.PatientClassifier;
 import com.vidacruz.triage.domain.service.TriageSlaPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
+import net.logstash.logback.argument.StructuredArguments;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.time.Clock;
@@ -22,6 +27,8 @@ import java.util.UUID;
 public class
 RegisterPatientService implements RegisterPatientUseCase {
 
+    private static final Logger logger = LoggerFactory.getLogger(RegisterPatientService.class);
+
     private final PatientRepositoryPort patients;
     private final ClinicalAuditRepositoryPort audits;
     private final OutboxRepositoryPort outbox;
@@ -29,6 +36,7 @@ RegisterPatientService implements RegisterPatientUseCase {
     private final TransactionPort transactions;
     private final Clock clock;
     private final TriageSlaPolicy slaPolicy;
+    private final MeterRegistry meterRegistry;
 
     public RegisterPatientService(
             PatientRepositoryPort patients,
@@ -37,7 +45,8 @@ RegisterPatientService implements RegisterPatientUseCase {
             PatientClassifier classifier,
             TransactionPort transactions,
             Clock clock,
-            TriageSlaPolicy slaPolicy) {
+            TriageSlaPolicy slaPolicy,
+            MeterRegistry meterRegistry) {
         this.patients = patients;
         this.audits = audits;
         this.outbox = outbox;
@@ -45,12 +54,22 @@ RegisterPatientService implements RegisterPatientUseCase {
         this.transactions = transactions;
         this.clock = clock;
         this.slaPolicy = slaPolicy;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
     public Mono<Patient> register(PatientRegistration registration, String correlationId) {
         return Mono.defer(() -> {
             TriageLevel level = classifier.classify(registration);
+            Counter.builder("vidacruz.triage.classifications")
+                    .description("Patient classifications by triage level")
+                    .tag("level", level.name())
+                    .register(meterRegistry)
+                    .increment();
+            logger.info(
+                    "Patient classified",
+                    StructuredArguments.keyValue("correlationId", correlationId),
+                    StructuredArguments.keyValue("triageLevel", level.name()));
             Instant now = clock.instant();
             Patient patient = new Patient(
                     UUID.randomUUID(),

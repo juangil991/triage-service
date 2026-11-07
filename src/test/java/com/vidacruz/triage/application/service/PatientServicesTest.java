@@ -17,6 +17,7 @@ import com.vidacruz.triage.domain.service.AdministrativeComplaintMatcher;
 import com.vidacruz.triage.domain.service.PatientClassifier;
 import com.vidacruz.triage.domain.service.PatientRegistrationValidator;
 import com.vidacruz.triage.domain.service.PatientStateMachine;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
@@ -48,6 +49,7 @@ class PatientUseCasesTest {
             return work;
         }
     };
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private RegisterPatientService registerPatient;
     private GetPatientService getPatient;
     private ChangePatientStatusService changePatientStatus;
@@ -62,7 +64,8 @@ class PatientUseCasesTest {
                 new PatientClassifier(new PatientRegistrationValidator(), new AdministrativeComplaintMatcher()),
                 transactions,
                 clock,
-                TriageLevel::slaMinutes);
+                TriageLevel::slaMinutes,
+                meterRegistry);
         getPatient = new GetPatientService(patients);
         changePatientStatus = new ChangePatientStatusService(
                 patients, audits, outbox, new PatientStateMachine(), transactions, clock);
@@ -100,6 +103,10 @@ class PatientUseCasesTest {
                 && audit.eventType().equals("paciente_registrado")));
         verify(outbox).save(argThat(event -> event.eventType().equals("paciente_registrado")
                 && event.correlationId().equals("correlation-1")));
+        assertEquals(1.0, meterRegistry.get("vidacruz.triage.classifications")
+                .tag("level", "NO_URGENTE")
+                .counter()
+                .count());
     }
 
     @Test

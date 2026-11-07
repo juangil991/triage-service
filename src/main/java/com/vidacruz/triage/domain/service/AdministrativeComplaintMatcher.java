@@ -35,6 +35,7 @@ public class AdministrativeComplaintMatcher {
             "appointment date displayed", "confirmed date",
             "actualizar seguro", "proveedor de seguro", "informacion de seguro",
             "update of their insurance provider", "insurance provider information",
+            "documentos", "recoleccion de resultados", "renovacion de recetario", "vacunacion", "seguimiento",
             "seguimiento de queja", "queja previa", "reclamo sin respuesta",
             "previously submitted administrative complaint", "complaint has not received a response");
 

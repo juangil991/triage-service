@@ -19,7 +19,7 @@ public record PatientResponse(
         int dolor,
         int gcs,
         String quejaPrincipal,
-        String nivelClasificado,
+        String nivel,
         int slaMinutos,
         String estado,
         boolean escalado,

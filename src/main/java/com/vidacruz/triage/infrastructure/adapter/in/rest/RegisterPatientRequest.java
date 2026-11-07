@@ -7,11 +7,11 @@ import java.math.BigDecimal;
 public record RegisterPatientRequest(
         String nombreCompleto,
         Integer edad,
-        Integer frecuenciaCardiacaBpm,
-        Integer presionSistolicaMmhg,
-        Integer presionDiastolicaMmhg,
-        BigDecimal spo2,
-        BigDecimal temperaturaC,
+        Integer frecuenciaCardiaca,
+        Integer presionSistolica,
+        Integer presionDiastolica,
+        BigDecimal spO2,
+        BigDecimal temperatura,
         Integer dolor,
         Integer gcs,
         String quejaPrincipal) {
@@ -20,11 +20,11 @@ public record RegisterPatientRequest(
         return new PatientRegistration(
                 nombreCompleto,
                 edad,
-                frecuenciaCardiacaBpm,
-                presionSistolicaMmhg,
-                presionDiastolicaMmhg,
-                spo2,
-                temperaturaC,
+                frecuenciaCardiaca,
+                presionSistolica,
+                presionDiastolica,
+                spO2,
+                temperatura,
                 dolor,
                 gcs,
                 quejaPrincipal);
